@@ -16,6 +16,7 @@ import (
 	"github.com/andregcab/burnrate/internal/cursor"
 	"github.com/andregcab/burnrate/internal/provider"
 	"github.com/andregcab/burnrate/internal/stats"
+	"github.com/andregcab/burnrate/internal/store"
 	"github.com/andregcab/burnrate/internal/ui"
 )
 
@@ -31,6 +32,9 @@ func main() {
 			return
 		case "help", "-h", "--help":
 			usage()
+			return
+		case "version", "--version":
+			fmt.Printf("burnrate %s (%s)\n", version, commit)
 			return
 		}
 	}
@@ -106,6 +110,12 @@ in the HUD
   r  refresh              l  toggle the legend   q  quit`)
 }
 
+// Build metadata, injected at release time by the linker.
+var (
+	version = "dev"
+	commit  = "none"
+)
+
 type machineFlag struct {
 	set  bool
 	name string
@@ -172,6 +182,11 @@ func run(o opts) error {
 
 	model := ui.NewModel(prov, refresh, look.machineOn, look.machine, look.buddy)
 	if !o.demo {
+		// Draw the last known figures immediately instead of a spinner. They
+		// are marked stale and replaced as soon as the first fetch lands.
+		if cached, err := store.Load(); err == nil {
+			model = model.SetInitialSnapshot(cached)
+		}
 		// --demo is a throwaway session and must not rewrite config.
 		model = model.SetSaveLook(config.SetLook)
 		model = model.SetExpiryWarning(expiryNotice(time.Now()))
@@ -307,7 +322,10 @@ func buildProvider(o opts) (provider.Provider, time.Duration, error) {
 		}
 	}
 
-	return provider.NewSession(cursor.New(cookie, teamID), o.topN), cfg.Refresh(), nil
+	// Wrap in the cache so a dropped network shows the last good numbers marked
+	// STALE rather than an error card.
+	sess := provider.NewSession(cursor.New(cookie, teamID), o.topN)
+	return provider.NewCached(sess), cfg.Refresh(), nil
 }
 
 func printVerification(s stats.Snapshot) {

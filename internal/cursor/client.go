@@ -78,17 +78,6 @@ func New(cookie string, teamID int, opts ...Option) *Client {
 	return c
 }
 
-// UserID extracts the user id from the cookie, which has the form
-// "<userId>::<jwt>". The browser stores it percent-encoded, so the separator
-// arrives as %3A%3A and has to be decoded before splitting.
-func UserID(cookie string) string {
-	decoded := strings.ReplaceAll(cookie, "%3A", ":")
-	if id, _, found := strings.Cut(decoded, "::"); found {
-		return id
-	}
-	return ""
-}
-
 func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {
 	var rdr io.Reader
 	if body != nil {

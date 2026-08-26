@@ -12,6 +12,7 @@ import (
 
 	"github.com/andregcab/burnrate/internal/config"
 	"github.com/andregcab/burnrate/internal/cursor"
+	"github.com/andregcab/burnrate/internal/store"
 )
 
 // runInit walks a first-time setup.
@@ -75,6 +76,13 @@ func runInit() error {
 	fmt.Println("ok")
 
 	if err := config.SetSessionCookie(cookie); err != nil {
+		return err
+	}
+
+	// Drop any cached snapshot. A new session may belong to a different
+	// account or a different billing cycle, and showing the previous one's
+	// figures would be wrong rather than merely out of date.
+	if err := store.Clear(); err != nil {
 		return err
 	}
 

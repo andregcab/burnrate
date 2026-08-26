@@ -250,6 +250,18 @@ func (m Model) View() string {
 // saved returns the transient save confirmation, if one is still showing.
 func (m Model) saved() string { return m.savedMsg }
 
+// SetInitialSnapshot seeds the model with cached figures so the HUD has
+// something to draw before the first fetch returns. The snapshot arrives
+// already marked stale, and is replaced as soon as live data lands.
+func (m Model) SetInitialSnapshot(s stats.Snapshot) Model {
+	m.snap = s
+	m.hpPos = s.FractionLeft
+	m.hpTarget = s.FractionLeft
+	m.lastSpend = s.SpentCents
+	m.primed = true
+	return m
+}
+
 // SetExpiryWarning installs a standing notice about the session cookie.
 func (m Model) SetExpiryWarning(msg string) Model {
 	m.expiry = msg

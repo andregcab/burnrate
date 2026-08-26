@@ -282,16 +282,3 @@ func TestBilledUsesKindNotChargeableFlag(t *testing.T) {
 		}
 	}
 }
-
-func TestUserIDDecodesPercentEncodedSeparator(t *testing.T) {
-	tests := []struct{ in, want string }{
-		{"user_01ABC::eyJhbGci.body.sig", "user_01ABC"},
-		{"user_01ABC%3A%3AeyJhbGci.body.sig", "user_01ABC"},
-		{"no-separator-here", ""},
-	}
-	for _, tt := range tests {
-		if got := UserID(tt.in); got != tt.want {
-			t.Errorf("UserID(%q) = %q, want %q", tt.in, got, tt.want)
-		}
-	}
-}

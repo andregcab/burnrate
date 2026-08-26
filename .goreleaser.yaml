@@ -1,0 +1,49 @@
+# Release configuration. Cut one with:
+#   git tag v0.1.0 && git push --tags
+# CI then builds, publishes to GitHub Releases, and updates the Homebrew tap.
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: burnrate
+    main: ./cmd/burnrate
+    binary: burnrate
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}}
+
+archives:
+  - formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files: [README.md, LICENSE]
+
+# Homebrew installs from a tarball rather than a signed .app, so macOS
+# Gatekeeper never quarantines it — which is why this is the recommended path
+# over downloading a binary from a browser.
+brews:
+  - repository:
+      owner: andregcab
+      name: homebrew-tap
+    directory: Formula
+    homepage: https://github.com/andregcab/burnrate
+    description: Your Cursor spend, at a glance — in the terminal
+    license: MIT
+    test: |
+      system "#{bin}/burnrate", "--demo", "--once"
+    install: |
+      bin.install "burnrate"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude: ['^docs:', '^test:', '^chore:', '^ci:']
