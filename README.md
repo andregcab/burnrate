@@ -132,7 +132,7 @@ catch it there than to quietly read wrong numbers.
 
 ```toml
 email = "you@example.com"
-team_id = 1234567
+team_id = 1234567          # discovered by `init`
 refresh_seconds = 300
 buddy = "chonk"
 machine = "money-furnace"

@@ -16,7 +16,7 @@ COOKIE="$(security find-generic-password -a "$USER" -s cursor-arcade-cookie -w 2
 [[ -z "$COOKIE" ]] && COOKIE="${CURSOR_SESSION_COOKIE:-}"
 [[ -z "$COOKIE" ]] && { echo "No session cookie. See session.sh." >&2; exit 1; }
 
-TEAM_ID="${CURSOR_TEAM_ID:-1234567}"
+TEAM_ID="${CURSOR_TEAM_ID:?set CURSOR_TEAM_ID (see teamId in GET /api/auth/stripe)}"
 UA='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36'
 EP="https://cursor.com/api/dashboard/get-filtered-usage-events"
 
@@ -71,7 +71,8 @@ echo
 echo "════ RECONCILIATION ════"
 SUM=$(jq -s 'map(.chargedCents//0)|add' "$RAW/all-events-uniq.jsonl")
 echo "  sum(chargedCents) over unique events : $(printf '%.2f' "$SUM")c"
-echo "  authoritative spendCents             : $(jq -r '(.teamMemberSpend[]|select(.userId==7654321)|.spendCents)' "$RAW/session-team-spend.json" 2>/dev/null || echo '?')c"
+MY_ID="$(jq -r '[.[].owningUser] | unique | .[0] // empty' "$RAW/all-events-uniq.jsonl" 2>/dev/null)"
+echo "  authoritative spendCents             : $(jq -r --arg id "$MY_ID" '(.teamMemberSpend[]|select((.userId|tostring)==$id)|.spendCents) // "?"' "$RAW/session-team-spend.json" 2>/dev/null || echo '?')c"
 echo "  usage-summary individualUsage.used   : $(jq -r '.individualUsage.overall.used' "$RAW/session-usage-summary.json" 2>/dev/null || echo '?')c"
 echo
 echo "  If these agree, aggregation is trustworthy and the top-5 is exact."

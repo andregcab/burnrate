@@ -45,8 +45,7 @@ echo "cookie loaded: ${#COOKIE} chars"
 echo "user id:       $USER_ID"
 [[ "$USER_ID" == "$DECODED" ]] && echo "  (warning: no '::' separator found — cookie may be truncated)"
 
-# Discovered from the dashboard's own usage-summary?teamId=... request.
-TEAM_ID="${CURSOR_TEAM_ID:-1234567}"
+TEAM_ID="${CURSOR_TEAM_ID:?set CURSOR_TEAM_ID (see teamId in GET /api/auth/stripe)}"
 echo "team id:       $TEAM_ID"
 
 UA='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36'

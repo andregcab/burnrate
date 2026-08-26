@@ -18,7 +18,7 @@ set -uo pipefail
 
 API="https://api.cursor.com"
 RAW="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/raw"
-EMAIL="${CURSOR_EMAIL:-you@example.com}"
+EMAIL="${CURSOR_EMAIL:?set CURSOR_EMAIL to the address on your Cursor account}"
 
 mkdir -p "$RAW"
 

@@ -52,17 +52,18 @@ The cookie is stored percent-encoded: the `<userId>::<jwt>` separator arrives as
   "individualUsage": { "overall": {
       "enabled": true, "used": 6751, "limit": 30000, "remaining": 23249 } },
   "teamUsage": { "onDemand": {
-      "enabled": true, "used": 7723421, "limit": 10000000, "remaining": 2276579 } }
+      "enabled": true, "used": <team total>, "limit": <team cap>, "remaining": <team remaining> } }
 }
 ```
 
 **All money is integer cents.** `individualUsage.overall` is you; `teamUsage` is
 the whole org and is not useful for a personal HUD.
 
-Confirmed against `get-team-spend`, which reports the same person as
-`spendCents: 6746`, `effectivePerUserLimitDollars: 300` — i.e. **$67.46 of $300**.
-`limit: 30000` cents is exactly that $300, and `teamUsage.onDemand.limit`
-`10000000` is exactly the $100,000 team cap shown in dashboard settings.
+Confirmed against `get-team-spend`, which reported the same person with a
+matching `spendCents` and an `effectivePerUserLimitDollars` equal to
+`individualUsage.overall.limit / 100`. `teamUsage.onDemand.limit` likewise
+matched the team cap shown in dashboard settings, which is how the cents unit
+was established.
 
 Ignore `autoModelSelectedDisplayMessage` / `namedModelSelectedDisplayMessage`.
 They said "You've used 0%" while usage was at 22.5% — they track a different
@@ -71,7 +72,7 @@ metric and would mislead.
 ### `POST /api/dashboard/get-filtered-usage-events` — the model breakdown
 
 ```json
-{ "teamId": 1234567, "page": 1, "pageSize": 1000 }
+{ "teamId": <your team id>, "page": 1, "pageSize": 1000 }
 ```
 
 Returns `{ "totalUsageEventsCount": 1457, "usageEventsDisplay": [...] }`.
@@ -99,7 +100,7 @@ Event shape:
   "chargedCents": 4.4749,                // totalCents + cursorTokenFee
   "isChargeable": true,
   "isHeadless": true,                    // true for cloud agents
-  "owningUser": "7654321",
+  "owningUser": "<your numeric user id>",
   "cloudAgentId": "...", "conversationId": "..."
 }
 ```
@@ -145,8 +146,8 @@ than mapping to a fixed set; Cursor renames models frequently.
 
 | Endpoint | Result |
 | --- | --- |
-| `get-hard-limit` | `{"hardLimit": 100000}` — the **team** cap in dollars, not yours. |
-| `get-team-spend` | Works and is authoritative, but ships 253 KB of 2,256 members to tell you one number. Verification only, never the hot path. |
+| `get-hard-limit` | Returns the **team** cap in dollars, not your personal one. |
+| `get-team-spend` | Works and is authoritative, but ships the entire member list to tell you one number. Verification only, never the hot path. |
 | `get-monthly-billing-cycle` | Returns a period that disagrees with `usage-summary`. Prefer `usage-summary`. |
 | `get-monthly-invoice`, `list-team-service-accounts` | `401` even in the browser — genuinely admin-only. |
 | `get-daily-spend-by-category` | `200` but empty with every body tried. |
