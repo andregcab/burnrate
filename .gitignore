@@ -1,0 +1,13 @@
+# Raw API dumps contain the whole team's emails and spend. Never commit them.
+probe/raw/
+
+# Build output
+/burnrate
+/dist/
+/desktop/build/bin/
+/desktop/frontend/dist/
+/desktop/frontend/node_modules/
+
+# Local config
+*.local.toml
+.DS_Store
