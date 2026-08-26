@@ -60,6 +60,10 @@ type Opts struct {
 	// Saved is a transient confirmation shown after the default is stored.
 	Saved string
 
+	// Notice is a standing warning, currently only the session cookie nearing
+	// expiry. It sits above the footer so it cannot be missed.
+	Notice string
+
 	// Legend shows the key bindings for cycling. On by default so the controls
 	// are discoverable without a manual.
 	Legend bool
@@ -181,6 +185,9 @@ func Render(s stats.Snapshot, now time.Time, frame int, o Opts) string {
 	row(center(burnLine(s, now), contentWidth()))
 
 	out = append(out, Divider(Width, "", ""))
+	if o.Notice != "" {
+		row(styleWarn.Render("▲ " + o.Notice))
+	}
 	if o.Legend {
 		row(legend(o))
 	}

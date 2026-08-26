@@ -20,6 +20,21 @@ import (
 )
 
 func main() {
+	// Subcommands come before flag parsing so `burnrate init` needs no dashes.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "init":
+			if err := runInit(); err != nil {
+				fmt.Fprintf(os.Stderr, "burnrate: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		case "help", "-h", "--help":
+			usage()
+			return
+		}
+	}
+
 	var (
 		asJSON    = flag.Bool("json", false, "print the snapshot as JSON and exit")
 		once      = flag.Bool("once", false, "print the HUD once and exit (no TUI)")
@@ -63,6 +78,34 @@ func main() {
 // Go's flag package requires a value for anything that is not a bool, so a
 // plain -machine would error. Implementing IsBoolFlag makes the bare form
 // legal while -machine=<slug> still selects a specific one.
+// usage prints help. Written by hand rather than left to the flag package so
+// the first thing a new user sees is `burnrate init`, not an alphabetical list
+// of options.
+func usage() {
+	fmt.Println(`burnrate — your Cursor spend, at a glance
+
+  burnrate            live HUD
+  burnrate init       first-time setup (or after your session expires)
+
+flags
+  --machine           show the machine section
+  --machine=<slug>    ...and pick one: money-furnace, token-factory,
+                      reactor-core, pumpjack
+  --no-machine        hide it
+  --buddy <name>      pick a companion (duck, goose, blob, cat, owl,
+                      turtle, snail, axolotl, rabbit, chonk)
+  --once              print once and exit
+  --json              print the snapshot as JSON
+  --verify            with --once, reconcile against the authoritative total
+  --demo              synthetic data, no credentials needed
+  --top <n>           how many models to list (default 5)
+
+in the HUD
+  b  cycle companion      m  cycle machine       a  machine on/off
+  s  save the current look as your default
+  r  refresh              l  toggle the legend   q  quit`)
+}
+
 type machineFlag struct {
 	set  bool
 	name string
@@ -131,11 +174,44 @@ func run(o opts) error {
 	if !o.demo {
 		// --demo is a throwaway session and must not rewrite config.
 		model = model.SetSaveLook(config.SetLook)
+		model = model.SetExpiryWarning(expiryNotice(time.Now()))
 	}
 
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	_, err = p.Run()
 	return err
+}
+
+// expiryNotice warns about the session cookie before it lapses.
+//
+// Cursor sessions cannot be renewed programmatically, so the only remedy is to
+// fetch a fresh cookie from the browser. Saying so a week ahead turns that from
+// a morning where the tool mysteriously stops working into a chore.
+func expiryNotice(now time.Time) string {
+	cookie, err := config.SessionCookie()
+	if err != nil {
+		return ""
+	}
+	soon, left := cursor.ExpiresWithin(cookie, cursor.ExpiryWarnWithin, now)
+	if !soon {
+		return ""
+	}
+	if left <= 0 {
+		return "session expired — run `burnrate init`"
+	}
+	days := int(left.Hours() / 24)
+	if days < 1 {
+		return "session expires today — run `burnrate init`"
+	}
+	return fmt.Sprintf("session expires in %d day%s — run `burnrate init`",
+		days, plural(days))
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 // look is the resolved arrangement: which companion, which machine, and

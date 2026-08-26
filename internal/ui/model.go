@@ -59,6 +59,10 @@ type Model struct {
 	buddy   int
 	legend  bool
 
+	// expiry is a standing warning about the session cookie, shown when it is
+	// close to lapsing. Empty when there is nothing to say.
+	expiry string
+
 	// saveLook persists the current arrangement. Nil disables the `s` key,
 	// which is what --demo wants: a throwaway session should not rewrite config.
 	saveLook   func(buddy, machine string, machineOn bool) error
@@ -233,6 +237,7 @@ func (m Model) View() string {
 		Machine:   m.machine,
 		Buddy:     m.buddy,
 		Saved:     m.saved(),
+		Notice:    m.expiry,
 		Legend:    m.legend,
 	})
 
@@ -244,6 +249,12 @@ func (m Model) View() string {
 
 // saved returns the transient save confirmation, if one is still showing.
 func (m Model) saved() string { return m.savedMsg }
+
+// SetExpiryWarning installs a standing notice about the session cookie.
+func (m Model) SetExpiryWarning(msg string) Model {
+	m.expiry = msg
+	return m
+}
 
 // SetSaveLook installs the callback used by the `s` key.
 func (m Model) SetSaveLook(fn func(buddy, machine string, machineOn bool) error) Model {
