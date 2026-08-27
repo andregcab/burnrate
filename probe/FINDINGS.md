@@ -1,73 +1,41 @@
-# M0 findings — the Cursor data contract
+# How burnrate gets its data
 
-Everything below was verified against a live account on 2026-08-26. The probe
-scripts in this directory reproduce it.
+Verified against a live account, 2026-08-26. The scripts here reproduce it.
 
-## The short version
+## The official API doesn't work
 
-The **official Admin API is unusable** for this tool unless you are a Cursor team
-admin. The **dashboard's own backend**, authenticated with a browser session
-cookie, gives us everything we need.
-
-## Why not the official API
-
-| Surface | Result |
+| surface | result |
 | --- | --- |
-| `/teams/*` (Admin API) | `401 Invalid Team API Key` — needs a team admin key. The dashboard only mints **user** keys (`cursor.com/dashboard/api?section=user-keys`), and there is no team-key section for non-admins. |
-| `/v0/usage`, `/v0/spend`, `/v0/limits`, `/v0/quota`, `/v0/me/usage` | `404` — these routes do not exist. The user API has no usage data at all. |
-| `/v0/me`, `/v0/models`, `/v0/agents` | `200`, but none carry spend or quota. |
-| `/organizations/*` | `401` / `404`. |
+| `/teams/*` (Admin API) | `401` — needs a team-admin key. The dashboard only lets regular members mint *user* keys. |
+| `/v0/usage`, `/v0/spend`, `/v0/limits` | `404` — the user API has no usage data at all. |
+| `/v0/me`, `/v0/models`, `/v0/agents` | `200`, but no spend or quota. |
 
-A user API key (`crsr_` + 64 chars) authenticates fine — `/v0/me` returns 200 —
-so this is a permissions and surface-area wall, not an auth bug.
+A user key authenticates fine, so this is a permissions wall, not an auth bug.
 
-## What we use instead
+## What works instead
 
-Base `https://cursor.com`. Auth is the `WorkosCursorSessionToken` cookie.
+The dashboard's own backend, on `https://cursor.com`, authenticated with the
+`WorkosCursorSessionToken` cookie.
 
-**`Origin` and `Referer` headers are mandatory.** Without them these routes
-return `403`; with them, `200`. They are Next.js routes with CSRF checks.
+**`Origin` and `Referer` are mandatory** — without them these routes return
+`403`. The cookie is stored percent-encoded, so the `<userId>::<jwt>` separator
+arrives as `%3A%3A`.
 
-```
-Cookie: WorkosCursorSessionToken=<token>
-Origin: https://cursor.com
-Referer: https://cursor.com/dashboard
-Content-Type: application/json      # on POSTs
-```
-
-The cookie is stored percent-encoded: the `<userId>::<jwt>` separator arrives as
-`%3A%3A` and must be decoded before splitting.
-
-### `GET /api/usage-summary` — the HP bar
-
-506 bytes, one request, everything for requirements 3 and 4.
+### `GET /api/usage-summary` — the gauge
 
 ```json
 {
   "billingCycleStart": "2026-08-25T00:14:35.682Z",
-  "billingCycleEnd":   "2026-09-25T00:14:35.682Z",
-  "membershipType": "enterprise",
-  "limitType": "team",
   "isUnlimited": false,
-  "individualUsage": { "overall": {
-      "enabled": true, "used": 6751, "limit": 30000, "remaining": 23249 } },
-  "teamUsage": { "onDemand": {
-      "enabled": true, "used": <team total>, "limit": <team cap>, "remaining": <team remaining> } }
+  "individualUsage": { "overall": { "used": 6751, "limit": 30000, "remaining": 23249 } }
 }
 ```
 
-**All money is integer cents.** `individualUsage.overall` is you; `teamUsage` is
-the whole org and is not useful for a personal HUD.
+All money is **integer cents**. `individualUsage.overall` is you; `teamUsage` is
+the whole org and isn't useful for a personal HUD.
 
-Confirmed against `get-team-spend`, which reported the same person with a
-matching `spendCents` and an `effectivePerUserLimitDollars` equal to
-`individualUsage.overall.limit / 100`. `teamUsage.onDemand.limit` likewise
-matched the team cap shown in dashboard settings, which is how the cents unit
-was established.
-
-Ignore `autoModelSelectedDisplayMessage` / `namedModelSelectedDisplayMessage`.
-They said "You've used 0%" while usage was at 22.5% — they track a different
-metric and would mislead.
+Ignore `autoModelSelectedDisplayMessage` — it said "0% used" while usage was at
+22%. It tracks something else.
 
 ### `POST /api/dashboard/get-filtered-usage-events` — the model breakdown
 
@@ -75,109 +43,54 @@ metric and would mislead.
 { "teamId": <your team id>, "page": 1, "pageSize": 1000 }
 ```
 
-Returns `{ "totalUsageEventsCount": 1457, "usageEventsDisplay": [...] }`.
+Already scoped to the caller. `pageSize` accepts 1000, `page` works, sorted
+newest first. Use `chargedCents` (model cost + Cursor fee); `usageBasedCosts` is
+a pre-rounded display string. Timestamps are epoch millis **as strings**.
 
-- **Already scoped to the caller.** All 1,457 events carried a single
-  `owningUser`. No user filter is needed or available.
-- **`pageSize` accepts 1000** (verified 100 / 500 / 1000). A cycle is one or two
-  requests, not fifteen.
-- **`page` works correctly** — distinct time ranges, zero duplicates across all
-  15 pages of a 1,457-row set.
-- Sorted newest first.
+### `POST /api/dashboard/get-monthly-billing-cycle` — the cycle end
 
-Event shape:
+Returns `startDateEpochMillis` / `endDateEpochMillis` as strings.
 
-```json
-{
-  "timestamp": "1787773712502",          // epoch millis AS A STRING
-  "model": "gpt-5.6-sol-xhigh",
-  "kind": "USAGE_EVENT_KIND_USAGE_BASED",
-  "isTokenBasedCall": true,
-  "tokenUsage": { "inputTokens": 6, "outputTokens": 298,
-                  "cacheWriteTokens": 526, "cacheReadTokens": 55274,
-                  "totalCents": 3.0723 },
-  "cursorTokenFee": 1.4026,
-  "chargedCents": 4.4749,                // totalCents + cursorTokenFee
-  "isChargeable": true,
-  "isHeadless": true,                    // true for cloud agents
-  "owningUser": "<your numeric user id>",
-  "cloudAgentId": "...", "conversationId": "..."
-}
-```
+## Three traps
 
-Use `chargedCents` — it is the model cost plus the Cursor fee, and it is what
-reconciles. `usageBasedCosts` is a pre-rounded display string (`"$0.03"`).
+Each produces plausible but wrong numbers, so each is pinned by a test.
 
-## The two traps
+**1. Events span multiple cycles.** The endpoint returns recent events
+regardless of billing period. On a two-day-old cycle only 147 of 1457 belonged
+to it — summing everything overstated spend by **2.2×**. Filter
+`timestamp >= billingCycleStart`.
 
-**1. Events span more than one billing cycle.** The endpoint returns recent
-events regardless of cycle. On a cycle two days old, only **147 of 1,457** events
-belonged to it. Summing the unfiltered list overstates spend by **2.2×**.
-Always filter `timestamp >= billingCycleStart`.
+**2. `isChargeable` is not the billing filter.** It's `true` for
+`USAGE_EVENT_KIND_INCLUDED_IN_BUSINESS` events, which are never billed.
+Filtering on it still overstated the total. Filter on
+`kind == "USAGE_EVENT_KIND_USAGE_BASED"`.
 
-**2. `isChargeable` is not the billing filter.** It is `true` for
-`USAGE_EVENT_KIND_INCLUDED_IN_BUSINESS` events, which are *not* billed. Filtering
-on it still overstated the total (14,806c vs 6,746c). Filter on
-`kind == "USAGE_EVENT_KIND_USAGE_BASED"` instead.
+**3. `usage-summary`'s cycle end is fake.** It returns start + exactly 31 days.
+`get-monthly-billing-cycle` returns a real midnight-UTC boundary, and
+`get-team-spend.nextCycleStart` agrees with it. Two sources against one
+synthesised value — use the billing endpoint. This drives days-remaining and the
+run-out projection, so getting it wrong predicts running dry *after* a reset
+that already happened.
 
-Kinds observed: `USAGE_EVENT_KIND_USAGE_BASED` (billed),
-`USAGE_EVENT_KIND_INCLUDED_IN_BUSINESS` (covered by the plan),
-`USAGE_EVENT_KIND_ERRORED_NOT_CHARGED`.
+## Reconciliation
 
-### Reconciliation
+With both event filters applied, the summed total matched the authoritative
+`spendCents` to within 0.8% — and that gap was only usage accruing between the
+two calls. `burnrate --once --verify` runs this check; drift moving off ~0% is
+the earliest signal Cursor changed something.
 
-With both filters applied, event sum **6,801.57c** against authoritative
-**6,746c** — 0.8% apart, and only because usage accrued between the two calls
-(`used` was observed ticking 6746 → 6751 during the probe run). This is the
-regression test: aggregate, compare to `usage-summary`, expect agreement within
-a small tolerance.
+## Checked and rejected
 
-## Model names are not normalized
-
-Two formats come back mixed, sometimes for the same underlying model:
-
-- slugs — `gpt-5.6-sol-xhigh`, `claude-opus-5-thinking-high`, `composer-2.5`
-- display names — `Cursor Grok 4.6 (Auto Balanced)`, `Claude Opus 5 (Auto Balanced)`
-
-Also a literal `"default"` (56 events). Render whatever the API returns rather
-than mapping to a fixed set; Cursor renames models frequently.
-
-## Endpoints checked and rejected
-
-| Endpoint | Result |
+| endpoint | why not |
 | --- | --- |
-| `get-hard-limit` | Returns the **team** cap in dollars, not your personal one. |
-| `get-team-spend` | Works and is authoritative, but ships the entire member list to tell you one number. Verification only, never the hot path. |
-| `get-monthly-billing-cycle` | **Use this for the cycle end.** See the correction below. |
-| `get-monthly-invoice`, `list-team-service-accounts` | `401` even in the browser — genuinely admin-only. |
-| `get-daily-spend-by-category` | `200` but empty with every body tried. |
-| `/api/usage?user=<id>` | Vestigial `gpt-4` counters, all zeros. |
+| `get-hard-limit` | the **team** cap, not yours |
+| `get-team-spend` | authoritative but ships the whole member list for one number — verification only |
+| `get-monthly-invoice`, `list-team-service-accounts` | `401` even in the browser; genuinely admin-only |
+| `get-daily-spend-by-category` | `200` but empty with every body tried |
+| `/api/usage?user=<id>` | vestigial `gpt-4` counters, all zeros |
 
-## Correction: which cycle end to trust
+## Model names aren't normalised
 
-`usage-summary` and `get-monthly-billing-cycle` disagree about when the cycle
-ends, and the first read of this file picked the wrong one.
-
-They agree on the start. On the end:
-
-| source | value | shape |
-| --- | --- | --- |
-| `usage-summary.billingCycleEnd` | start + **exactly 31 days**, same time-of-day | a computed default |
-| `get-monthly-billing-cycle.endDateEpochMillis` | clean **midnight UTC** on the 1st | a real boundary |
-| `get-team-spend.nextCycleStart` | the same midnight | independent agreement |
-
-Two sources agree and the third is synthesised, so prefer
-`get-monthly-billing-cycle`. The dashboard shows the same date it does.
-
-This matters beyond cosmetics: the cycle end drives days-remaining and the
-"empty by" projection, so the wrong date predicts running dry *after* a reset
-that has already happened.
-
-## Consequences for the build
-
-- Poll `usage-summary` on the refresh interval — 506 bytes, cheap.
-- Fetch events with `pageSize: 1000`, page until `timestamp < billingCycleStart`,
-  then stop. Early in a cycle that is one request.
-- Cache a per-model rollup keyed by `billingCycleStart`; wipe when it changes.
-- The session cookie expires. `init` must detect a 401 and say so plainly rather
-  than render stale numbers as current.
+Two formats come back mixed — slugs (`gpt-5.6-sol-xhigh`) and display names
+(`Cursor Grok 4.6 (Auto Balanced)`), plus a literal `"default"`. Render what the
+API returns; Cursor renames models often and a lookup table would go stale.
