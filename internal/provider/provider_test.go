@@ -206,3 +206,67 @@ func (f failing) Snapshot(context.Context) (stats.Snapshot, error) {
 type fixed struct{ snap stats.Snapshot }
 
 func (f fixed) Snapshot(context.Context) (stats.Snapshot, error) { return f.snap, nil }
+
+// usage-summary reports a cycle end of start + exactly 31 days, which is a
+// computed default rather than a real boundary. get-monthly-billing-cycle
+// returns the actual date, and it must win.
+//
+// This is not cosmetic: the cycle end drives days-remaining and the "empty by"
+// projection, so the wrong date warns about running dry after a reset that has
+// already happened.
+func TestCycleEndComesFromTheBillingEndpointNotTheSummary(t *testing.T) {
+	start := time.Date(2026, 8, 25, 0, 14, 35, 0, time.UTC)
+	summaryEnd := start.AddDate(0, 0, 31)                  // the wrong one
+	realEnd := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC) // the right one
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "usage-summary"):
+			fmt.Fprint(w, summaryJSON(start, summaryEnd, 6746, 30000))
+		case strings.Contains(r.URL.Path, "get-monthly-billing-cycle"):
+			fmt.Fprintf(w, `{"startDateEpochMillis":"%d","endDateEpochMillis":"%d"}`,
+				start.UnixMilli(), realEnd.UnixMilli())
+		default:
+			fmt.Fprint(w, `{"totalUsageEventsCount":0,"usageEventsDisplay":[]}`)
+		}
+	}))
+	defer srv.Close()
+
+	snap, err := NewSession(cursor.New("c", 1, cursor.WithBaseURL(srv.URL)), 5).
+		Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("Snapshot() = %v", err)
+	}
+	if !snap.CycleEnd.Equal(realEnd) {
+		t.Errorf("CycleEnd = %v, want %v (the summary's %v is a computed default)",
+			snap.CycleEnd, realEnd, summaryEnd)
+	}
+}
+
+// A slightly wrong end date beats no HUD, so a failure here must not lose the
+// snapshot.
+func TestCycleEndFallsBackToTheSummaryOnFailure(t *testing.T) {
+	start := time.Date(2026, 8, 25, 0, 14, 35, 0, time.UTC)
+	summaryEnd := start.AddDate(0, 0, 31)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "usage-summary"):
+			fmt.Fprint(w, summaryJSON(start, summaryEnd, 6746, 30000))
+		case strings.Contains(r.URL.Path, "get-monthly-billing-cycle"):
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			fmt.Fprint(w, `{"totalUsageEventsCount":0,"usageEventsDisplay":[]}`)
+		}
+	}))
+	defer srv.Close()
+
+	snap, err := NewSession(cursor.New("c", 1, cursor.WithBaseURL(srv.URL)), 5).
+		Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("Snapshot() = %v, want a usable snapshot", err)
+	}
+	if !snap.CycleEnd.Equal(summaryEnd) {
+		t.Errorf("CycleEnd = %v, want the summary's %v as a fallback", snap.CycleEnd, summaryEnd)
+	}
+}

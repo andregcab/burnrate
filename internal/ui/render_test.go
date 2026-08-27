@@ -714,3 +714,35 @@ func TestTallSpeciesAreExcludedNotClipped(t *testing.T) {
 		t.Fatal("every species was excluded; the box is too small")
 	}
 }
+
+// The rate must be labelled as an average. Bare "$36/day" reads as a measured
+// daily total rather than a derived figure.
+func TestBurnLineLabelsTheRateAsAnAverage(t *testing.T) {
+	out := stripANSI(burnLine(snap(15000, 30000), time.Now()))
+	if !strings.Contains(out, "avg ") {
+		t.Errorf("burnLine = %q, want the rate labelled as an average", out)
+	}
+}
+
+// Every state must say when the budget resets, or a run-out date is impossible
+// to judge — "empty by Sep 4" is alarming until you know it resets on the 1st.
+func TestBurnLineAlwaysNamesTheResetDate(t *testing.T) {
+	tests := []struct {
+		name      string
+		remaining int
+	}{
+		{"healthy", 29000},
+		{"burning down", 1200},
+		{"exhausted", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := snap(tt.remaining, 30000)
+			out := stripANSI(burnLine(s, time.Now()))
+			want := s.CycleEnd.Local().Format("Jan 2")
+			if !strings.Contains(out, want) {
+				t.Errorf("burnLine = %q, want it to name the reset date %q", out, want)
+			}
+		})
+	}
+}

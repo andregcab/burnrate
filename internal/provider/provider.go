@@ -50,6 +50,14 @@ func (s *Session) Snapshot(ctx context.Context) (stats.Snapshot, error) {
 		return stats.Snapshot{}, err
 	}
 
+	// usage-summary's cycle end is start + 31 days, a computed default rather
+	// than the real boundary. Correct it from the endpoint that reports an
+	// actual date. A failure here is not worth losing the snapshot over — a
+	// slightly wrong end date is better than no HUD — so fall back quietly.
+	if cyc, cerr := s.Client.BillingCycle(ctx); cerr == nil && !cyc.End.IsZero() {
+		sum.BillingCycleEnd = cyc.End
+	}
+
 	events, err := s.Client.UsageEventsSince(ctx, sum.BillingCycleStart, s.MaxPages)
 	if err != nil {
 		snap := stats.Build(sum, nil, s.TopN, time.Now())

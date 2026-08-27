@@ -304,6 +304,17 @@ func modelLines(s stats.Snapshot) []string {
 
 // burnLine always shows the burn rate — it is what the tool is named for — and
 // adds a projection or a warning depending on where that rate leads.
+//
+// The figure is labelled "avg" and is the cycle average: total spend divided by
+// elapsed cycle time. It deliberately is NOT the instantaneous rate. Two
+// reasons. An unlabelled "$36/day" reads as a measured daily total rather than
+// a derived rate, and the instantaneous figure swings wildly — fifteen minutes
+// of heavy use extrapolates to a number you will never actually spend. It also
+// has to match the projection beside it, which is average-based; showing a
+// burst rate next to an average-based forecast made the two disagree.
+//
+// The instantaneous rate still drives the machine, where a fast-moving belt
+// claims nothing specific.
 func burnLine(s stats.Snapshot, now time.Time) string {
 	// A projected run-out date in the past reads as a bug, so an already-empty
 	// budget says the real thing instead.
@@ -312,19 +323,25 @@ func burnLine(s stats.Snapshot, now time.Time) string {
 			styleFaint.Render("   ·   resets "+s.CycleEnd.Local().Format("Jan 2"))
 	}
 
-	rate := s.EffectiveBurnCentsPerDay(now)
+	rate := s.BurnRateCentsPerDay(now)
 	if rate <= 0 {
 		return styleFaint.Render("◆  no spend yet this cycle")
 	}
 
-	if when := s.RunsOutOn(now); !when.IsZero() {
-		return styleWarn.Render("▲  "+money(rate)+"/day") +
-			styleFaint.Render("   ·   empty by "+when.Local().Format("Mon Jan 2")+" at this rate")
+	resets := ""
+	if !s.CycleEnd.IsZero() {
+		resets = ", resets " + s.CycleEnd.Local().Format("Jan 2")
 	}
 
-	left := styleLabel.Render("◆  " + money(rate) + "/day")
+	if when := s.RunsOutOn(now); !when.IsZero() {
+		return styleWarn.Render("▲  avg "+money(rate)+"/day") +
+			styleFaint.Render("   ·   empty by "+when.Local().Format("Mon Jan 2")+resets)
+	}
+
+	left := styleLabel.Render("◆  avg " + money(rate) + "/day")
 	if proj := s.ProjectedCents(now); proj > 0 {
-		return left + styleFaint.Render("   ·   on pace for "+money(proj)+" this cycle")
+		return left + styleFaint.Render("   ·   on pace for "+money(proj)+
+			" by "+s.CycleEnd.Local().Format("Jan 2"))
 	}
 	return left
 }

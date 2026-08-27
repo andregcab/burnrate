@@ -148,10 +148,30 @@ than mapping to a fixed set; Cursor renames models frequently.
 | --- | --- |
 | `get-hard-limit` | Returns the **team** cap in dollars, not your personal one. |
 | `get-team-spend` | Works and is authoritative, but ships the entire member list to tell you one number. Verification only, never the hot path. |
-| `get-monthly-billing-cycle` | Returns a period that disagrees with `usage-summary`. Prefer `usage-summary`. |
+| `get-monthly-billing-cycle` | **Use this for the cycle end.** See the correction below. |
 | `get-monthly-invoice`, `list-team-service-accounts` | `401` even in the browser — genuinely admin-only. |
 | `get-daily-spend-by-category` | `200` but empty with every body tried. |
 | `/api/usage?user=<id>` | Vestigial `gpt-4` counters, all zeros. |
+
+## Correction: which cycle end to trust
+
+`usage-summary` and `get-monthly-billing-cycle` disagree about when the cycle
+ends, and the first read of this file picked the wrong one.
+
+They agree on the start. On the end:
+
+| source | value | shape |
+| --- | --- | --- |
+| `usage-summary.billingCycleEnd` | start + **exactly 31 days**, same time-of-day | a computed default |
+| `get-monthly-billing-cycle.endDateEpochMillis` | clean **midnight UTC** on the 1st | a real boundary |
+| `get-team-spend.nextCycleStart` | the same midnight | independent agreement |
+
+Two sources agree and the third is synthesised, so prefer
+`get-monthly-billing-cycle`. The dashboard shows the same date it does.
+
+This matters beyond cosmetics: the cycle end drives days-remaining and the
+"empty by" projection, so the wrong date predicts running dry *after* a reset
+that has already happened.
 
 ## Consequences for the build
 
