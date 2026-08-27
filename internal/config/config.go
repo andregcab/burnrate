@@ -1,9 +1,8 @@
-// Package config loads burnrate's settings and locates the API key.
+// Package config loads burnrate's settings and locates the session cookie.
 //
-// Settings live in ~/.burnrate/config.toml. The API key deliberately does
-// not: it goes in the macOS Keychain, so it never sits in a dotfile, a shell
-// history entry, or a process argument list. The CURSOR_API_KEY environment
-// variable is honored as a fallback for CI and for people who prefer it.
+// Settings live in ~/.burnrate/config.toml. The cookie deliberately does not:
+// it goes in the macOS Keychain, so it never sits in a dotfile, a shell history
+// entry, or a process argument list.
 package config
 
 import (
@@ -20,22 +19,14 @@ import (
 )
 
 const (
-	// KeychainService is the Keychain item's service name.
-	KeychainService = "burnrate"
-
-	// legacyService and legacyCookieService are the pre-rename names. Reads
-	// fall back to them so an existing install keeps working across the rename
-	// instead of silently losing its credentials.
-	legacyService       = "cursor-arcade"
+	// legacyCookieService is the pre-rename Keychain name. Reads fall back to
+	// it so an existing install keeps working across the rename.
 	legacyCookieService = "cursor-arcade-cookie"
 
 	// KeychainCookieService holds the browser session cookie. It is separate
 	// from the API key item because they are different credentials with very
 	// different blast radii: the cookie is a full logged-in session.
 	KeychainCookieService = "burnrate-cookie"
-
-	// EnvAPIKey is the fallback source for the API key.
-	EnvAPIKey = "CURSOR_API_KEY"
 
 	// EnvCookie is the fallback source for the session cookie.
 	EnvCookie = "CURSOR_SESSION_COOKIE"
@@ -47,22 +38,12 @@ const (
 	minRefresh = 30 * time.Second
 )
 
-// ErrNoKey means we found no API key in either the Keychain or the environment.
-var ErrNoKey = errors.New("no API key found")
-
-// ErrNoEmail means config.toml is missing the email we filter every call by.
-var ErrNoEmail = errors.New("no email configured")
-
 // ErrNoCookie means we found no session cookie in either the Keychain or the
 // environment.
 var ErrNoCookie = errors.New("no session cookie found")
 
 // Config is the on-disk settings file.
 type Config struct {
-	// Email identifies which team member's row to read. Every API call is
-	// filtered by it.
-	Email string `toml:"email"`
-
 	// MonthlyBudgetDollars overrides the spend limit the API reports, and is
 	// the only source of a limit when the team sets no per-user cap. Nil means
 	// "trust the API". This is the HP bar's denominator.
@@ -134,9 +115,6 @@ func Load() (Config, error) {
 
 	// Environment wins over the file, so a one-off run can override without
 	// editing anything.
-	if v := os.Getenv("CURSOR_EMAIL"); v != "" {
-		c.Email = v
-	}
 	if v := os.Getenv("CURSOR_MONTHLY_BUDGET"); v != "" {
 		d, err := strconv.ParseFloat(v, 64)
 		if err != nil {
@@ -146,14 +124,6 @@ func Load() (Config, error) {
 	}
 
 	return c, nil
-}
-
-// Validate reports whether the config is usable, with errors that say what to do.
-func (c Config) Validate() error {
-	if c.Email == "" {
-		return fmt.Errorf("%w: run `burnrate init`, or set CURSOR_EMAIL", ErrNoEmail)
-	}
-	return nil
 }
 
 // SetLook stores the default companion, machine, and whether the machine is
@@ -221,32 +191,6 @@ func keychainAccount() string {
 	return "default"
 }
 
-// APIKey returns the Cursor team admin API key, preferring the Keychain and
-// falling back to the environment.
-func APIKey() (string, error) {
-	for _, svc := range []string{KeychainService, legacyService} {
-		if key, err := keyring.Get(svc, keychainAccount()); err == nil && key != "" {
-			return key, nil
-		}
-	}
-	if key := os.Getenv(EnvAPIKey); key != "" {
-		return key, nil
-	}
-	return "", fmt.Errorf(
-		"%w: run `burnrate init`, or set %s", ErrNoKey, EnvAPIKey)
-}
-
-// SetAPIKey stores the key in the Keychain.
-func SetAPIKey(key string) error {
-	if key == "" {
-		return errors.New("refusing to store an empty API key")
-	}
-	if err := keyring.Set(KeychainService, keychainAccount(), key); err != nil {
-		return fmt.Errorf("storing key in Keychain: %w", err)
-	}
-	return nil
-}
-
 // SessionCookie returns the WorkosCursorSessionToken value, preferring the
 // Keychain and falling back to the environment.
 //
@@ -265,6 +209,13 @@ func SessionCookie() (string, error) {
 		"%w: run `burnrate init` to store your session cookie", ErrNoCookie)
 }
 
+// keyringGet reports whether a real cookie is stored on this machine. Tests
+// that exercise the fallback paths skip when one is, rather than asserting
+// against the developer's own Keychain.
+func keyringGet() (string, error) {
+	return keyring.Get(KeychainCookieService, keychainAccount())
+}
+
 // SetSessionCookie stores the session cookie in the Keychain.
 func SetSessionCookie(cookie string) error {
 	if cookie == "" {
@@ -272,15 +223,6 @@ func SetSessionCookie(cookie string) error {
 	}
 	if err := keyring.Set(KeychainCookieService, keychainAccount(), cookie); err != nil {
 		return fmt.Errorf("storing cookie in Keychain: %w", err)
-	}
-	return nil
-}
-
-// DeleteAPIKey removes the stored key. A missing key is not an error.
-func DeleteAPIKey() error {
-	err := keyring.Delete(KeychainService, keychainAccount())
-	if err != nil && !errors.Is(err, keyring.ErrNotFound) {
-		return fmt.Errorf("deleting key from Keychain: %w", err)
 	}
 	return nil
 }

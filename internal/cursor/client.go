@@ -57,9 +57,6 @@ type Client struct {
 // Option configures a Client.
 type Option func(*Client)
 
-// WithHTTPClient overrides the HTTP client, mainly for tests.
-func WithHTTPClient(h *http.Client) Option { return func(c *Client) { c.http = h } }
-
 // WithBaseURL overrides the target host, for tests against an httptest server.
 func WithBaseURL(u string) Option { return func(c *Client) { c.baseURL = u } }
 
@@ -216,7 +213,6 @@ type Summary struct {
 	BillingCycleStart time.Time `json:"billingCycleStart"`
 	BillingCycleEnd   time.Time `json:"billingCycleEnd"`
 	MembershipType    string    `json:"membershipType"`
-	LimitType         string    `json:"limitType"`
 	IsUnlimited       bool      `json:"isUnlimited"`
 
 	IndividualUsage struct {
@@ -238,9 +234,10 @@ type Bucket struct {
 	Remaining int  `json:"remaining"`
 }
 
-// EventsPage is the get-filtered-usage-events response.
+// EventsPage is the get-filtered-usage-events response. The payload also
+// carries a total count and per-event token detail; see probe/FINDINGS.md for
+// the full shape. Only what is actually used is decoded here.
 type EventsPage struct {
-	Total  int     `json:"totalUsageEventsCount"`
 	Events []Event `json:"usageEventsDisplay"`
 }
 
@@ -260,10 +257,6 @@ type Event struct {
 	// IsChargeable is deliberately not the billing filter: it is true even for
 	// INCLUDED_IN_BUSINESS events, which are not billed. Use Kind instead.
 	IsChargeable bool `json:"isChargeable"`
-
-	IsHeadless     bool   `json:"isHeadless"`
-	OwningUser     string `json:"owningUser"`
-	ConversationID string `json:"conversationId"`
 }
 
 // Event kinds observed in the wild.
