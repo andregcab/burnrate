@@ -42,9 +42,19 @@ go run github.com/andregcab/burnrate/cmd/burnrate@latest --demo --machine
 ## Install
 
 ```sh
-brew install andregcab/tap/burnrate     # or: go install github.com/andregcab/burnrate/cmd/burnrate@latest
+go install github.com/andregcab/burnrate/cmd/burnrate@latest
 burnrate init
 ```
+
+Needs Go 1.21+ and macOS (the session cookie lives in the Keychain). Make sure
+`$(go env GOPATH)/bin` is on your `PATH`:
+
+```sh
+echo 'export PATH="$HOME/go/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
+```
+
+A Homebrew tap is set up in `.goreleaser.yaml` but not published yet, so
+`brew install` does not work today.
 
 `init` asks for one thing — your Cursor session cookie — then discovers your
 team and verifies everything before storing anything.
