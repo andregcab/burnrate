@@ -11,3 +11,4 @@ probe/raw/
 # Local config
 *.local.toml
 .DS_Store
+dist/

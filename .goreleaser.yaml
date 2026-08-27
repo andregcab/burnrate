@@ -24,21 +24,36 @@ archives:
       {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
     files: [README.md, LICENSE]
 
-# Homebrew installs from a tarball rather than a signed .app, so macOS
-# Gatekeeper never quarantines it — which is why this is the recommended path
-# over downloading a binary from a browser.
-brews:
-  - repository:
+# Homebrew distribution.
+#
+# A cask, not a formula: formulae are meant to build from source, and GoReleaser
+# only generated formula-shaped wrappers around prebuilt binaries as a
+# workaround. Casks are the supported way to ship a compiled artifact.
+#
+# The post-install hook matters. These binaries are not code-signed or
+# notarised, so macOS quarantines anything downloaded and refuses to run it with
+# "the developer cannot be verified". Stripping the quarantine attribute is what
+# makes `brew install` actually produce a working command.
+homebrew_casks:
+  - name: burnrate
+    directory: Casks
+    repository:
       owner: andregcab
       name: homebrew-tap
-    directory: Formula
+      branch: main
+    binaries: [burnrate]
     homepage: https://github.com/andregcab/burnrate
     description: Your Cursor spend, at a glance — in the terminal
     license: MIT
-    test: |
-      system "#{bin}/burnrate", "--demo", "--once"
-    install: |
-      bin.install "burnrate"
+    url:
+      verified: github.com/andregcab/burnrate
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr",
+                           args: ["-dr", "com.apple.quarantine", "#{staged_path}/burnrate"]
+          end
 
 checksum:
   name_template: checksums.txt
