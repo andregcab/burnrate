@@ -746,3 +746,56 @@ func TestBurnLineAlwaysNamesTheResetDate(t *testing.T) {
 		})
 	}
 }
+
+// A spend pop lasts long enough to be noticed. Refreshes are minutes apart, so
+// a half-second flash is easy to look up and find already finished.
+func TestSpendPopLastsLongEnoughToSee(t *testing.T) {
+	secs := float64(PopFrames) / fps
+	if secs < 5 {
+		t.Errorf("a spend pop lasts %.1fs, want at least 5s", secs)
+	}
+}
+
+// The flourish and the machine's reaction must end together. They were 4 and 6
+// frames, so the text vanished while the pistons were still firing.
+func TestPopTextAndMachineReactionEndTogether(t *testing.T) {
+	s := snap(15000, 30000)
+	now := time.Now()
+
+	lastPop, lastFiring := -1, -1
+	for age := 0; age < PopFrames*2; age++ {
+		// The factory is the machine with a visible firing pose.
+		out := stripANSI(Render(s, now, 0, Opts{
+			Arcade: true, HP: 0.5, CoinAge: age, CoinCents: 400,
+			Machine: MachineIndexBySlug("token-factory"),
+		}))
+		if strings.Contains(out, "$4.00") {
+			lastPop = age
+		}
+		if strings.Contains(out, pistonFired) {
+			lastFiring = age
+		}
+	}
+
+	if lastPop < 0 || lastFiring < 0 {
+		t.Fatalf("pop never rendered (text=%d, firing=%d)", lastPop, lastFiring)
+	}
+	if lastPop != lastFiring {
+		t.Errorf("pop text ends at frame %d but the machine stops at %d", lastPop, lastFiring)
+	}
+}
+
+// The pip fades across the pop's whole lifetime rather than a fixed count, so
+// it cannot disappear while the text it belongs to is still showing.
+func TestPipFadesAcrossTheWholePop(t *testing.T) {
+	if got := Pip(0); got == " " {
+		t.Error("Pip is blank at the start of a pop")
+	}
+	mid := PopFrames / 2
+	if got := Pip(mid); got == " " {
+		t.Errorf("Pip is blank halfway through a pop (frame %d)", mid)
+	}
+	if got := Pip(PopFrames + 1); got != " " {
+		t.Errorf("Pip(%d) = %q after the pop ended, want blank", PopFrames+1, got)
+	}
+}

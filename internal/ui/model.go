@@ -21,9 +21,6 @@ type Fetcher interface {
 // blink while costing essentially nothing.
 const tickInterval = 125 * time.Millisecond
 
-// coinLifetime is how many frames a spend-pop stays on screen.
-const coinLifetime = 4
-
 type tickMsg time.Time
 
 type snapshotMsg struct {
@@ -158,7 +155,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.coinAge >= 0 {
 			m.coinAge++
-			if m.coinAge >= coinLifetime {
+			if m.coinAge >= PopFrames {
 				m.coinAge = -1
 			}
 		}

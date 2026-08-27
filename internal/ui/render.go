@@ -69,6 +69,13 @@ type Opts struct {
 	Legend bool
 }
 
+// popping reports whether a spend registered recently enough to still be shown.
+//
+// One predicate for both the flourish and the machine's reaction, so they
+// cannot end at different times — they previously ran for 4 and 6 frames, and
+// the text vanished while the pistons were still going.
+func popping(coinAge int) bool { return coinAge >= 0 && coinAge < PopFrames }
+
 // cells is how many of a gauge's cells are filled at a given fraction.
 //
 // Plain rounding to the nearest whole cell, with one exception: a nonzero
@@ -159,7 +166,7 @@ func Render(s stats.Snapshot, now time.Time, frame int, o Opts) string {
 		// machine reacts to a burst within a minute or two but does not idle
 		// during steady use.
 		activity := s.ActivityRate(now, FullScaleCentsPerDay)
-		firing := o.CoinAge >= 0 && o.CoinAge < fireFrames
+		firing := popping(o.CoinAge)
 
 		// No intensity label: the section says which machine is running, and
 		// the burn row below states the actual rate. A word like "HEAVY" would
@@ -214,7 +221,7 @@ func titleBand(s stats.Snapshot, frame int, low bool, o Opts) []string {
 	// a pop like "+$10.04 ✦" is far wider than "◐" and would otherwise shove
 	// the sprite sideways every time spend landed.
 	slot := styleFaint.Render(Coin(frame))
-	if o.CoinAge >= 0 {
+	if popping(o.CoinAge) {
 		slot = styleCoin.Render("+" + money(o.CoinCents) + " " + Pip(o.CoinAge))
 	}
 	slot = padLeft(slot, popSlotWidth)

@@ -27,8 +27,6 @@ const (
 	holdIdle = 14 // frames per step when nothing is burning
 	holdMax  = 2  // frames per step at redline
 
-	// fireFrames is how long a machine reacts after spend lands.
-	fireFrames = 6
 )
 
 // Machine draws one animated row.

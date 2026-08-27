@@ -28,6 +28,19 @@ const (
 
 	// coinHold: the spend-pop spinner advances a quarter turn per second.
 	coinHold = 8
+
+	// PopFrames is how long a spend registers for: the "+$0.04" flourish and
+	// the machine's reaction both run for this many frames.
+	//
+	// Eight seconds, which is far longer than an animation needs to be seen but
+	// about right for one you might miss. Refreshes are minutes apart, so a
+	// half-second flash is easy to look up and find already over — leaving you
+	// unsure whether anything happened.
+	//
+	// Shared so the flourish and the machine cannot drift apart. They were 4
+	// and 6 frames respectively, so the text vanished while the pistons were
+	// still firing.
+	PopFrames = 8 * fps
 )
 
 // blinkStarts holds one cycle's worth of blink onsets, in frames. The schedule
@@ -80,14 +93,25 @@ var coinFrames = []string{"◐", "◓", "◑", "◒"}
 // Coin returns the spinner glyph for a frame.
 func Coin(frame int) string { return coinFrames[abs(frame/coinHold)%len(coinFrames)] }
 
-// pipFrames fade a spend-pop out, so it draws the eye briefly and then stops
-// competing with the numbers.
+// pipFrames fade a spend-pop out over its lifetime, so it draws the eye and
+// then stops competing with the numbers without ever blinking out abruptly.
 var pipFrames = []string{"✦", "✦", "✧", "✧", "·", "·", " "}
 
 // Pip returns the coin-pop glyph for a given age in frames.
+//
+// The fade is spread across PopFrames rather than a fixed frame count, so
+// changing how long a pop lasts cannot leave the glyph gone while the text it
+// belongs to is still on screen.
 func Pip(age int) string {
-	i := age / 2
-	if age < 0 || i >= len(pipFrames) {
+	if age < 0 {
+		return " "
+	}
+	step := PopFrames / len(pipFrames)
+	if step < 1 {
+		step = 1
+	}
+	i := age / step
+	if i >= len(pipFrames) {
 		return " "
 	}
 	return pipFrames[i]
