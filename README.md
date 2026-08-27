@@ -78,6 +78,13 @@ go test ./...
 go run ./cmd/burnrate --demo --machine
 ```
 
+Releasing (local only — CI can't push to the tap without a PAT):
+
+```sh
+git tag -a v0.1.2 -m "..." && git push origin v0.1.2
+GITHUB_TOKEN=$(gh auth token) goreleaser release --clean
+```
+
 `stats.Snapshot` is the seam: the UI never touches HTTP, the client never
 formats. Sprites come from the [Claude Code buddy
 set](https://gist.github.com/zmxv/7f83671f860c15be02f45b07fee207fc).
